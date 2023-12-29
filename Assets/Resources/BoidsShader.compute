@@ -1,0 +1,56 @@
+#pragma kernel UpdateBoids
+#pragma kernel BoidStartIndexCellKey
+
+static int PRIME_NUMBER_1 = 83;
+static int PRIME_NUMBER_2 = 17;
+static int PRIME_NUMBER_3 = 41;
+
+struct Boid
+{
+    float3 position;
+    float3 direction;
+    float health;
+};
+
+RWStructuredBuffer<Boid> boidsBuffer;
+RWStructuredBuffer<int> boidsIndexBuffer;
+RWStructuredBuffer<int> boidsStartIndicesBuffer;
+float deltaTime;
+float boidSpeed;
+float rotationSpeed;
+float cellSize;
+int amountBoids;
+
+int PosToCellKey(float3 pos)
+{
+    int x = floor(pos.x / cellSize);
+    int y = floor(pos.y / cellSize);
+    int z = floor(pos.z / cellSize);
+
+    return (x * PRIME_NUMBER_1 + y * PRIME_NUMBER_2 + z * PRIME_NUMBER_3) % amountBoids;
+}
+
+[numthreads(512,1,1)]
+void UpdateBoids (uint id : SV_DispatchThreadID)
+{
+    Boid boid = boidsBuffer[id];
+
+    boidsIndexBuffer[id] = PosToCellKey(boid.position);
+
+    boidsBuffer[id] = boid;
+}
+
+[numthreads(512,1,1)]
+void BoidStartIndexCellKey (uint id : SV_DispatchThreadID)
+{
+    // int key1 = boidsIndexBuffer[id - 1];
+    // int key2 = boidsIndexBuffer[id];
+    // int key3 = boidsIndexBuffer[id + 1];
+    //
+    // if(key1 == key2 && key2 != key3)
+    // {
+    //     boidsStartIndicesBuffer[id] = 
+    // }
+}
+
+
