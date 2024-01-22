@@ -35,6 +35,9 @@ public class BoidsManager : MonoBehaviour
         InitShader();
     }
     
+    
+
+    
     private void InitBoids()
     {
         boidsArray = new Boid[numOfBoids];
