@@ -16,23 +16,37 @@ public class ComputeSorter
     public static void Sort(ComputeBuffer _values)
     {
         sortShader.SetBuffer(bitonicKernel, "values", _values);
-        sortShader.SetInt("numValues", _values.count);
 
-        int numPairs = NextPowerOfTwo(_values.count) / 2;
-        int numStages = (int)Mathf.Log(numPairs * 2, 2);
+        int valuesCount = _values.count;
 
-        for (int stageIndex = 0; stageIndex < numStages; stageIndex++)
+        float[] floatArray = new float[valuesCount];
+        
+        _values.GetData(floatArray);
+        string debug = "";
+        for (int i = 0; i < valuesCount; i++)
         {
-            for (int stepIndex = 0; stepIndex < stageIndex + 1; stepIndex++)
-            {
-                int groupWidth = 1 << (stageIndex - stepIndex);
-                int groupHeight = 2 * groupWidth - 1;
-                sortShader.SetInt("groupWidth", groupWidth);
-                sortShader.SetInt("groupHeight", groupHeight);
-                sortShader.SetInt("stepIndex", stepIndex);
+            debug += floatArray[i] + " ";
+        }
+        Debug.Log($"0 0");
+        Debug.Log(debug);
 
-                var threadGroupsX = Mathf.CeilToInt((float)numPairs / xThreadGroup);
+        for (int k = 2; k <= valuesCount; k *= 2)
+        {
+            for (int j = k/2; j > 0; j /= 2)
+            {
+                sortShader.SetInt("k", k);
+                sortShader.SetInt("j", j);
+
+                var threadGroupsX = Mathf.CeilToInt((float)valuesCount / xThreadGroup);
                 sortShader.Dispatch(bitonicKernel, threadGroupsX, 1, 1);
+                _values.GetData(floatArray);
+                debug = "";
+                for (int i = 0; i < valuesCount; i++)
+                {
+                    debug += floatArray[i] + " ";
+                }
+                Debug.Log($"{k}  {j}");
+                Debug.Log(debug);
             }
         }
     }

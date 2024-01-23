@@ -1,15 +1,30 @@
 #pragma kernel BitonicMergeSort
 
 RWStructuredBuffer<float> values;
-int numValues;
-int groupWidth;
-int groupHeight;
-int stepIndex;
+int k;
+int j;
 
 [numthreads(512,1,1)]
 void BitonicMergeSort (uint id : SV_DispatchThreadID)
 {
-    
+    int lowIndex = id;
+    int highIndex = id ^ j;
+
+    if(highIndex > lowIndex)
+    {
+        float lowValue = values[lowIndex];
+        float highValue = values[highIndex];
+        if ((lowIndex & k == 0 && lowValue > highValue) || (lowIndex & k != 0 && lowValue < highValue))
+        {
+            values[lowIndex] = highValue;
+            values[highIndex] = lowValue;
+        }
+        // if (lowValue > highValue)
+        // {
+        //     values[lowIndex] = highValue;
+        //     values[highIndex] = lowValue;
+        // }
+    }
 }
 
 

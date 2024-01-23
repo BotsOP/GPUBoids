@@ -1,8 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using Random = UnityEngine.Random;
+
+
 
 public class BoidsManager : MonoBehaviour
 {
@@ -34,9 +37,32 @@ public class BoidsManager : MonoBehaviour
         InitBoids();
         InitShader();
     }
-    
-    
 
+    public void TestSorting()
+    {
+        int count = 16;
+        float[] floatArray = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            floatArray[i] = Mathf.CeilToInt(Random.Range(0, 100));
+        }
+
+        ComputeBuffer testBuffer = new ComputeBuffer(count, sizeof(float), ComputeBufferType.Structured);
+        testBuffer.SetData(floatArray);
+        
+        ComputeSorter.Sort(testBuffer);
+        
+        testBuffer.GetData(floatArray);
+        for (int i = 0; i < count - 1; i++)
+        {
+            if (floatArray[i] > floatArray[i + 1])
+            {
+                Debug.LogError($"{floatArray[i]} not sorted");
+                continue;
+            }
+            Debug.Log(floatArray[i]);
+        }
+    }
     
     private void InitBoids()
     {
