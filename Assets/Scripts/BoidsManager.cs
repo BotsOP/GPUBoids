@@ -62,6 +62,8 @@ public class BoidsManager : MonoBehaviour
             }
             Debug.Log(floatArray[i]);
         }
+        
+        testBuffer.Release();
     }
     
     private void InitBoids()

@@ -1,30 +1,39 @@
-#pragma kernel BitonicMergeSort
+#pragma kernel BitonicMergeFlip
+#pragma kernel BitonicMergeDisperse
 
 RWStructuredBuffer<float> values;
-int k;
-int j;
+int h;
 
 [numthreads(512,1,1)]
-void BitonicMergeSort (uint id : SV_DispatchThreadID)
+void BitonicMergeFlip (uint id : SV_DispatchThreadID)
 {
-    int lowIndex = id;
-    int highIndex = id ^ j;
+    int q = 2 * id / h * h;
+    int half_h = h / 2;
+    
+    int lowIndex = q +     (id % half_h)    ;
+    int highIndex = q + h - (id % half_h) - 1;
 
-    if(highIndex > lowIndex)
-    {
-        float lowValue = values[lowIndex];
-        float highValue = values[highIndex];
-        if ((lowIndex & k == 0 && lowValue > highValue) || (lowIndex & k != 0 && lowValue < highValue))
-        {
-            values[lowIndex] = highValue;
-            values[highIndex] = lowValue;
-        }
-        // if (lowValue > highValue)
-        // {
-        //     values[lowIndex] = highValue;
-        //     values[highIndex] = lowValue;
-        // }
-    }
+    float lowValue = values[lowIndex];
+    float highValue = values[highIndex];
+
+    values[lowIndex] = min(lowValue, highValue);
+    values[highIndex] = max(lowValue, highValue);
+}
+
+[numthreads(512,1,1)]
+void BitonicMergeDisperse (uint id : SV_DispatchThreadID)
+{
+    int q = 2 * id / h * h;
+    int half_h = h / 2;
+    
+    int lowIndex = q + id % half_h;
+    int highIndex = q + id % half_h + half_h;
+
+    float lowValue = values[lowIndex];
+    float highValue = values[highIndex];
+
+    values[lowIndex] = min(lowValue, highValue);
+    values[highIndex] = max(lowValue, highValue);
 }
 
 
