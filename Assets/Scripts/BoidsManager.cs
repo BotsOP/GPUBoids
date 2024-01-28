@@ -9,19 +9,34 @@ using Random = UnityEngine.Random;
 
 public class BoidsManager : MonoBehaviour
 {
+    [Header("Boid Forces")]
+    [SerializeField, Range(0, 10)] private float seperationRadius = 1;
+    [SerializeField, Range(0, 1)] private float seperationStrength = 1;
+    [SerializeField, Range(0, 10)] private float alignmentRadius = 1;
+    [SerializeField, Range(0, 1)] private float alignmentStrength = 1;
+    [SerializeField, Range(0, 10)] private float cohesionRadius = 1;
+    [SerializeField, Range(0, 10)] private float cohesionStrength = 1;
+    
+    [Header("Boid Settings")]
+    [SerializeField] private Material boidMaterial;
+    [SerializeField] private Mesh boidMesh;
     [SerializeField] private int numOfBoids;
     [SerializeField] private float  spawnAreaWidth;
+    [SerializeField, Range(0, 5)] private float boidSpeed = 1;
+    [SerializeField, Range(0, 1)] private float rotationSpeed = 1;
+    [SerializeField, Range(0, 10)] private float cellSize = 1;
     
     private ComputeShader boidsShader;
     private Boid[] boidsArray;
     private ComputeBuffer boidsBuffer;
+    private ComputeBuffer boidsIndicesBuffer;
+    private ComputeBuffer boidsStartIndicesBuffer;
     private ComputeBuffer argsBuffer;
-    private Mesh boidMesh;
     private uint[] args = { 0, 0, 0, 0, 0 };
     private int updateBoidsKernel;
-    private Material boidMaterial;
-    private float rotationSpeed;
-    private float boidSpeed;
+    private int boidStartIndexKernel;
+    private int boidIndexKernel;
+    private int threadX;
     private float neighbourDistance;
     private Bounds bounds;
 
@@ -30,7 +45,9 @@ public class BoidsManager : MonoBehaviour
         boidsShader = Resources.Load<ComputeShader>("BoidsShader");
 
         updateBoidsKernel = boidsShader.FindKernel("UpdateBoids");
-        
+        boidStartIndexKernel = boidsShader.FindKernel("BoidStartIndex");
+        boidIndexKernel = boidsShader.FindKernel("BoidIndex");
+        threadX = Mathf.CeilToInt(numOfBoids / 512.0f);
         //Should fix this to accurate bounds
         bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
         
@@ -38,34 +55,18 @@ public class BoidsManager : MonoBehaviour
         InitShader();
     }
 
-    public void TestSorting()
+    private void OnDisable()
     {
-        int count = 16;
-        float[] floatArray = new float[count];
-        for (int i = 0; i < count; i++)
-        {
-            floatArray[i] = Mathf.CeilToInt(Random.Range(0, 100));
-        }
-
-        ComputeBuffer testBuffer = new ComputeBuffer(count, sizeof(float), ComputeBufferType.Structured);
-        testBuffer.SetData(floatArray);
-        
-        ComputeSorter.Sort(testBuffer);
-        
-        testBuffer.GetData(floatArray);
-        for (int i = 0; i < count - 1; i++)
-        {
-            if (floatArray[i] > floatArray[i + 1])
-            {
-                Debug.LogError($"{floatArray[i]} not sorted");
-                continue;
-            }
-            Debug.Log(floatArray[i]);
-        }
-        
-        testBuffer.Release();
+        boidsBuffer?.Release();
+        boidsBuffer = null;
+        boidsIndicesBuffer?.Release();
+        boidsIndicesBuffer = null;
+        boidsStartIndicesBuffer?.Release();
+        boidsStartIndicesBuffer = null;
+        argsBuffer?.Release();
+        argsBuffer = null;
     }
-    
+
     private void InitBoids()
     {
         boidsArray = new Boid[numOfBoids];
@@ -73,8 +74,8 @@ public class BoidsManager : MonoBehaviour
         for (int i = 0; i < numOfBoids; i++)
         {
             Vector3 pos = GetBoidSpawnPos();
-            Quaternion rot = Quaternion.Slerp(transform.rotation, Random.rotation, 0.3f);
-            boidsArray[i] = new Boid(pos, rot.eulerAngles);
+            Vector3 vel = new Vector3(Random.Range(0f, 1f), Random.Range(0f, 1f), Random.Range(0f, 1f));
+            boidsArray[i] = new Boid(pos, vel);
         }
     }
 
@@ -116,6 +117,9 @@ public class BoidsManager : MonoBehaviour
     {
         boidsBuffer = new ComputeBuffer(numOfBoids, 7 * sizeof(float));
         boidsBuffer.SetData(boidsArray);
+        
+        boidsIndicesBuffer = new ComputeBuffer(numOfBoids, 3 * sizeof(int));
+        boidsStartIndicesBuffer = new ComputeBuffer(numOfBoids, sizeof(int));
 
         argsBuffer = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
         if (boidMesh != null)
@@ -125,29 +129,73 @@ public class BoidsManager : MonoBehaviour
         }
         argsBuffer.SetData(args);
 
-        boidsShader.SetBuffer(updateBoidsKernel, "boidsBuffer", boidsBuffer);
-        boidsShader.SetFloat("rotationSpeed", rotationSpeed);
-        boidsShader.SetFloat("boidSpeed", boidSpeed);
-        boidsShader.SetFloat("neighbourDistance", neighbourDistance);
-        boidsShader.SetInt("boidsCount", numOfBoids);
+        boidsShader.SetBuffer(updateBoidsKernel, "Boids", boidsBuffer);
+        boidsShader.SetBuffer(updateBoidsKernel, "Indices", boidsIndicesBuffer);
+        boidsShader.SetBuffer(updateBoidsKernel, "StartIndices", boidsStartIndicesBuffer);
+        
+        boidsShader.SetBuffer(boidIndexKernel, "Boids", boidsBuffer);
+        boidsShader.SetBuffer(boidIndexKernel, "Indices", boidsIndicesBuffer);
+        
+        boidsShader.SetBuffer(boidStartIndexKernel, "Indices", boidsIndicesBuffer);
+        boidsShader.SetBuffer(boidStartIndexKernel, "StartIndices", boidsStartIndicesBuffer);
+        
+        boidsShader.SetInt("amountBoids", numOfBoids);
+        
+        boidsShader.Dispatch(boidIndexKernel, threadX, 1, 1);
 
         boidMaterial.SetBuffer("boidsBuffer", boidsBuffer);
     }
 
     private void Update()
     {
+        boidsShader.SetFloat("rotationSpeed", rotationSpeed);
+        boidsShader.SetFloat("boidSpeed", boidSpeed);
+        boidsShader.SetFloat("cellSize", cellSize);
+        boidsShader.SetFloat("deltaTime", Time.deltaTime);
+        
+        boidsShader.SetFloat("seperationRadius", seperationRadius);
+        boidsShader.SetFloat("alignmentRadius", alignmentRadius);
+        boidsShader.SetFloat("cohesionRadius", cohesionRadius);
+        boidsShader.SetFloat("neighbourRadius", Mathf.Max(seperationRadius, Mathf.Max(alignmentRadius, cohesionRadius)));
+        
+        boidsShader.SetFloat("seperationStrength", seperationStrength);
+        boidsShader.SetFloat("alignmentStrength", alignmentStrength);
+        boidsShader.SetFloat("cohesionStrength", cohesionStrength);
+        
+        
+        // Uint3[] indices = new Uint3[numOfBoids];
+        // boidsIndicesBuffer.GetData(indices);
+        // uint[] startIndices = new uint[numOfBoids];
+        // boidsStartIndicesBuffer.GetData(startIndices);
+        boidsBuffer.GetData(boidsArray);
+        
+        boidsShader.Dispatch(boidIndexKernel, threadX, 1, 1);
+        ComputeSorter.Sort(boidsIndicesBuffer);
+        boidsShader.Dispatch(boidStartIndexKernel, threadX, 1, 1);
+
+        boidsShader.Dispatch(updateBoidsKernel, threadX, 1, 1);
+        
         Graphics.DrawMeshInstancedIndirect(boidMesh, 0, boidMaterial, bounds, argsBuffer);
     }
+}
+
+struct Uint3
+{
+    public uint x;
+    public uint y;
+    public uint z;
 }
 
 struct Boid
 {
     public Vector3 position;
     public Vector3 direction;
+    public float smth;
 
     public Boid(Vector3 pos, Vector3 dir)
     {
         position = pos;
         direction = dir;
+        smth = 0;
     }
 }

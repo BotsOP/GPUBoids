@@ -11,10 +11,9 @@ namespace Editor
             base.OnInspectorGUI();
             BoidsManager boidsManager = (BoidsManager)target;
  
-            if(GUILayout.Button("Test sorting"))
-            {
-                boidsManager.TestSorting();
-            }
+            // if(GUILayout.Button("Test sorting"))
+            // {
+            // }
         }
     }
 }

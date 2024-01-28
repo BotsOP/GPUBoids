@@ -1,56 +1,219 @@
 #pragma kernel UpdateBoids
-#pragma kernel BoidStartIndexCellKey
+#pragma kernel BoidStartIndex
+#pragma kernel BoidIndex
 
-static int PRIME_NUMBER_1 = 83;
-static int PRIME_NUMBER_2 = 17;
-static int PRIME_NUMBER_3 = 41;
+static int PRIME_NUMBER_1 = 15823;
+static int PRIME_NUMBER_2 = 9737333;
+static int PRIME_NUMBER_3 = 440817757;
+
+static const int3 offsets3D[27] =
+{
+    int3(-1, -1, -1),
+    int3(-1, -1, 0),
+    int3(-1, -1, 1),
+    int3(-1, 0, -1),
+    int3(-1, 0, 0),
+    int3(-1, 0, 1),
+    int3(-1, 1, -1),
+    int3(-1, 1, 0),
+    int3(-1, 1, 1),
+    int3(0, -1, -1),
+    int3(0, -1, 0),
+    int3(0, -1, 1),
+    int3(0, 0, -1),
+    int3(0, 0, 0),
+    int3(0, 0, 1),
+    int3(0, 1, -1),
+    int3(0, 1, 0),
+    int3(0, 1, 1),
+    int3(1, -1, -1),
+    int3(1, -1, 0),
+    int3(1, -1, 1),
+    int3(1, 0, -1),
+    int3(1, 0, 0),
+    int3(1, 0, 1),
+    int3(1, 1, -1),
+    int3(1, 1, 0),
+    int3(1, 1, 1)
+};
 
 struct Boid
 {
     float3 position;
-    float3 direction;
-    float health;
+    float3 velocity;
+    float smth;
 };
 
-RWStructuredBuffer<Boid> boidsBuffer;
-RWStructuredBuffer<int> boidsIndexBuffer;
-RWStructuredBuffer<int> boidsStartIndicesBuffer;
+RWStructuredBuffer<Boid> Boids;
+RWStructuredBuffer<uint3> Indices;
+RWStructuredBuffer<uint> StartIndices;
+
 float deltaTime;
 float boidSpeed;
 float rotationSpeed;
-float cellSize;
-int amountBoids;
 
-int PosToCellKey(float3 pos)
+float cellSize;
+
+float seperationRadius;
+float alignmentRadius;
+float cohesionRadius;
+float neighbourRadius;
+
+float seperationStrength;
+float alignmentStrength;
+float cohesionStrength;
+
+uint amountBoids;
+
+int3 PosToCell(float3 pos)
 {
     int x = floor(pos.x / cellSize);
     int y = floor(pos.y / cellSize);
     int z = floor(pos.z / cellSize);
 
-    return (x * PRIME_NUMBER_1 + y * PRIME_NUMBER_2 + z * PRIME_NUMBER_3) % amountBoids;
+    return int3(x, y, z);
+}
+
+uint CellToHash(int3 cell)
+{
+    return cell.x * PRIME_NUMBER_1 + cell.y * PRIME_NUMBER_2 + cell.z * PRIME_NUMBER_3;
+}
+
+uint HashToKey(uint hash)
+{
+    return hash % amountBoids;
 }
 
 [numthreads(512,1,1)]
 void UpdateBoids (uint id : SV_DispatchThreadID)
 {
-    Boid boid = boidsBuffer[id];
+    if(id >= amountBoids)
+    {
+        return;
+    }
+    
+    Boid boid = Boids[id];
+    float3 pos = boid.position;
+    float3 vel = boid.velocity;
 
-    boidsIndexBuffer[id] = PosToCellKey(boid.position);
+    int3 cell = PosToCell(boid.position);
+    uint hash = CellToHash(cell);
+    uint key = HashToKey(hash);
 
-    boidsBuffer[id] = boid;
+    uint amountNeighboursSeperation = 0;
+    uint amountNeighboursAlignment = 0;
+    uint amountNeighboursCohesion = 0;
+    float3 seperationForce = float3(0, 0, 0);
+    float3 alignmentForce = float3(0, 0, 0);
+    float3 cohesionForce = float3(0, 0, 0);
+
+    for (int i = 0; i < 27; i ++)
+    {
+        uint hashLocal = CellToHash(cell + offsets3D[i]);
+        uint keyLocal = HashToKey(hashLocal);
+        uint currIndex = StartIndices[keyLocal];
+        
+        while (currIndex < amountBoids)
+        {
+            uint3 indexData = Indices[currIndex];
+            currIndex ++;
+            // Exit if no longer looking at correct bin
+            if (indexData.x != keyLocal) break;
+            // Skip if hash does not match
+            if (indexData.y != hashLocal) continue;
+            if (currIndex == id) continue;
+
+            Boid boidNeighbour = Boids[indexData.z];
+            float3 neighbourPos = boidNeighbour.position;
+            float3 neighbourVel = boidNeighbour.velocity;
+            // Skip if not within radius
+            float distanceToNeighbour = distance(neighbourPos, pos);
+            if(distanceToNeighbour > neighbourRadius) continue;
+            
+            if(distanceToNeighbour < seperationRadius)
+            {
+                seperationForce += (pos - neighbourPos);
+                amountNeighboursSeperation++;
+            }
+            
+            if(distanceToNeighbour < alignmentRadius)
+            {
+                alignmentForce += neighbourVel;
+                amountNeighboursAlignment++;
+            }
+            
+            // if(distanceToNeighbour < cohesionRadius)
+            // {
+            //     cohesionForce += neighbourPos;
+            //     amountNeighboursCohesion++;
+            // }
+            cohesionForce += neighbourPos;
+            amountNeighboursCohesion++;
+        }
+    }
+
+    float3 newVel = float3(0, 0, 0);
+    if(amountNeighboursSeperation > 0)
+    {
+        seperationForce /= amountNeighboursSeperation;
+        newVel += seperationForce * seperationStrength;
+    }
+    if(amountNeighboursAlignment > 0)
+    {
+        alignmentForce /= amountNeighboursAlignment;
+        newVel += alignmentForce * alignmentStrength;
+    }
+    if(amountNeighboursCohesion > 0)
+    {
+        cohesionForce /= amountNeighboursCohesion;
+        cohesionForce = cohesionForce - pos;
+        newVel += cohesionForce * cohesionStrength;
+    }
+
+    newVel = normalize(newVel);
+
+    //float ip = exp(-rotationSpeed * deltaTime);
+    //boid.velocity = normalize(vel + newVel);
+    boid.velocity = lerp(vel, newVel, rotationSpeed);
+    boid.position += boid.velocity * (boidSpeed * deltaTime);
+    boid.smth = amountNeighboursSeperation / (amountBoids / 2);
+
+    Boids[id] = boid;
 }
 
 [numthreads(512,1,1)]
-void BoidStartIndexCellKey (uint id : SV_DispatchThreadID)
+void BoidIndex (uint id : SV_DispatchThreadID)
 {
-    // int key1 = boidsIndexBuffer[id - 1];
-    // int key2 = boidsIndexBuffer[id];
-    // int key3 = boidsIndexBuffer[id + 1];
-    //
-    // if(key1 == key2 && key2 != key3)
-    // {
-    //     boidsStartIndicesBuffer[id] = 
-    // }
+    if(id >= amountBoids)
+    {
+        return;
+    }
+
+    Boid boid = Boids[id];
+    boid.smth = 0;
+    Boids[id] = boid;
+
+    int3 cell = PosToCell(boid.position);
+    uint hash = CellToHash(cell);
+    uint key = HashToKey(hash);
+    
+    Indices[id] = uint3(key, hash, id);
+}
+
+[numthreads(512,1,1)]
+void BoidStartIndex (uint id : SV_DispatchThreadID)
+{
+    if(id >= amountBoids)
+    {
+        return;
+    }
+    
+    uint cellKey = Indices[id].x;
+    uint cellKeyPrev = id == 0 ? amountBoids : Indices[id - 1].x;
+    if(cellKey != cellKeyPrev)
+    {
+        StartIndices[cellKey] = id;
+    }
 }
 
 

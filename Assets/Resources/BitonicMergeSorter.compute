@@ -1,7 +1,8 @@
 #pragma kernel BitonicMergeFlip
 #pragma kernel BitonicMergeDisperse
 
-RWStructuredBuffer<float> values;
+RWStructuredBuffer<uint3> values;
+int count;
 int h;
 
 [numthreads(512,1,1)]
@@ -10,14 +11,22 @@ void BitonicMergeFlip (uint id : SV_DispatchThreadID)
     int q = 2 * id / h * h;
     int half_h = h / 2;
     
-    int lowIndex = q +     (id % half_h)    ;
-    int highIndex = q + h - (id % half_h) - 1;
+    int lowIndex = q + id % half_h;
+    int highIndex = q + h - id % half_h - 1;
 
-    float lowValue = values[lowIndex];
-    float highValue = values[highIndex];
+    if(highIndex > count - 1)
+    {
+        return;
+    }
 
-    values[lowIndex] = min(lowValue, highValue);
-    values[highIndex] = max(lowValue, highValue);
+    uint3 lowValue = values[lowIndex];
+    uint3 highValue = values[highIndex];
+
+    if(lowValue.x > highValue.x)
+    {
+        values[lowIndex] = highValue;
+        values[highIndex] = lowValue;
+    }
 }
 
 [numthreads(512,1,1)]
@@ -29,11 +38,19 @@ void BitonicMergeDisperse (uint id : SV_DispatchThreadID)
     int lowIndex = q + id % half_h;
     int highIndex = q + id % half_h + half_h;
 
-    float lowValue = values[lowIndex];
-    float highValue = values[highIndex];
+    if(highIndex > count - 1)
+    {
+        return;
+    }
 
-    values[lowIndex] = min(lowValue, highValue);
-    values[highIndex] = max(lowValue, highValue);
+    uint3 lowValue = values[lowIndex];
+    uint3 highValue = values[highIndex];
+
+    if(lowValue.x > highValue.x)
+    {
+        values[lowIndex] = highValue;
+        values[highIndex] = lowValue;
+    }
 }
 
 
