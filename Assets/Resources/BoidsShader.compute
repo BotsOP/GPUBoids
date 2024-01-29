@@ -54,6 +54,7 @@ float rotationSpeed;
 float3 moveMePos;
 float maxSpeed;
 float minSpeed;
+float boxArea;
 
 float cellSize;
 
@@ -136,20 +137,23 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
             
             if(distanceToNeighbour < seperationRadius)
             {
-                seperationForce -= neighbourPos - pos;
+                float influence = 1 - (distanceToNeighbour / seperationRadius);
+                seperationForce -= (neighbourPos - pos) * influence;
                 amountNeighboursSeperation++;
             }
             
             if(distanceToNeighbour < alignmentRadius)
             {
-                alignmentForce += neighbourVel;
+                float influence = 1 - (distanceToNeighbour / alignmentRadius);
+                alignmentForce += neighbourVel * influence;
                 amountNeighboursAlignment++;
             }
             
             
             if(distanceToNeighbour < cohesionRadius)
             {
-                cohesionForce += neighbourPos;
+                float influence = 1 - (distanceToNeighbour / cohesionRadius);
+                cohesionForce += neighbourPos * influence;
                 amountNeighboursCohesion++;
             }
         }
@@ -158,7 +162,7 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
     float3 newVel = float3(0, 0, 0);
     if(amountNeighboursSeperation > 0)
     {
-        seperationForce /= amountNeighboursSeperation;
+        //seperationForce /= amountNeighboursSeperation;
         newVel += seperationForce * seperationStrength;
     }
     if(amountNeighboursAlignment > 0)
@@ -174,9 +178,17 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
         newVel += cohesionForce * cohesionStrength;
     }
 
-    newVel += (moveMePos - pos) * moveMeStrength;
+    //newVel += (moveMePos - pos) * moveMeStrength;
 
     vel += newVel;
+    
+    if (pos.x < 0) vel.x += 0.2;
+    if (pos.x > boxArea) vel.x -= 0.2;
+    if (pos.y < 0) vel.y += 0.2;
+    if (pos.y > boxArea) vel.y -= 0.2;
+    if (pos.z < 0) vel.z += 0.2;
+    if (pos.z > boxArea) vel.z -= 0.2;
+    
     float speed = length(vel);
     if(speed > maxSpeed)
     {
@@ -193,7 +205,7 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
     //boid.velocity = normalize(vel + newVel);
     boid.velocity = vel;
     boid.position += boid.velocity * (boidSpeed * deltaTime);
-    boid.smth = (float)amountNeighboursSeperation;
+    boid.smth = amountNeighboursCohesion;
 
     Boids[id] = boid;
 }
