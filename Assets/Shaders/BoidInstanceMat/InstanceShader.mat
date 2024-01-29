@@ -58,7 +58,7 @@ Material:
     - _EmissionPower: 1
     - _QueueControl: 0
     - _QueueOffset: 0
-    - _divide: 50
+    - _divide: 10
     m_Colors:
     - _AliveColor: {r: 1, g: 0, b: 0, a: 0}
     - _DeadColor: {r: 0, g: 0.99039316, b: 1, a: 0}

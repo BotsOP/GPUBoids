@@ -54,6 +54,7 @@ float rotationSpeed;
 float3 moveMePos;
 float maxSpeed;
 float minSpeed;
+float boxArea;
 
 float cellSize;
 
@@ -68,6 +69,15 @@ float cohesionStrength;
 float moveMeStrength;
 
 uint amountBoids;
+
+struct Forces
+{
+    float3 seperation;
+    float3 alignment;
+    float3 cohesion;
+};
+
+groupshared Forces cachedForces[32][27];
 
 int3 PosToCell(float3 pos)
 {
@@ -88,14 +98,9 @@ uint HashToKey(uint hash)
     return hash % amountBoids;
 }
 
-[numthreads(512,1,1)]
-void UpdateBoids (uint id : SV_DispatchThreadID)
+[numthreads(32,27,1)]
+void UpdateBoids (uint id : SV_DispatchThreadID, uint3 localId : SV_GroupThreadID)
 {
-    if(id >= amountBoids)
-    {
-        return;
-    }
-    
     Boid boid = Boids[id];
     float3 pos = boid.position;
     float3 vel = boid.velocity;
@@ -110,90 +115,122 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
     float3 seperationForce = float3(0, 0, 0);
     float3 alignmentForce = float3(0, 0, 0);
     float3 cohesionForce = float3(0, 0, 0);
-
-    for (int i = 0; i < 27; i ++)
-    {
-        uint hashLocal = CellToHash(cell + offsets3D[i]);
-        uint keyLocal = HashToKey(hashLocal);
-        uint currIndex = StartIndices[keyLocal];
+    
+    uint hashLocal = CellToHash(cell + offsets3D[localId.y]);
+    uint keyLocal = HashToKey(hashLocal);
+    uint currIndex = StartIndices[keyLocal];
         
-        while (currIndex < amountBoids)
-        {
-            uint3 indexData = Indices[currIndex];
-            currIndex ++;
-            // Exit if no longer looking at correct bin
-            if (indexData.x != keyLocal) break;
-            // Skip if hash does not match
-            if (indexData.y != hashLocal) continue;
-            if (currIndex == id) continue;
+    while (currIndex < amountBoids)
+    {
+        uint3 indexData = Indices[currIndex];
+        currIndex ++;
+        // Exit if no longer looking at correct bin
+        if (indexData.x != keyLocal) break;
+        // Skip if hash does not match
+        if (indexData.y != hashLocal) continue;
+        if (currIndex == id) continue;
 
-            Boid boidNeighbour = Boids[indexData.z];
-            float3 neighbourPos = boidNeighbour.position;
-            float3 neighbourVel = boidNeighbour.velocity;
-            // Skip if not within radius
-            float distanceToNeighbour = distance(neighbourPos, pos);
-            if(distanceToNeighbour > neighbourRadius) continue;
+        Boid boidNeighbour = Boids[indexData.z];
+        float3 neighbourPos = boidNeighbour.position;
+        float3 neighbourVel = boidNeighbour.velocity;
+        // Skip if not within radius
+        float distanceToNeighbour = distance(neighbourPos, pos);
+        if(distanceToNeighbour > neighbourRadius) continue;
             
-            if(distanceToNeighbour < seperationRadius)
-            {
-                seperationForce -= neighbourPos - pos;
-                amountNeighboursSeperation++;
-            }
+        if(distanceToNeighbour < seperationRadius)
+        {
+            seperationForce -= neighbourPos - pos;
+            amountNeighboursSeperation++;
+        }
             
-            if(distanceToNeighbour < alignmentRadius)
-            {
-                alignmentForce += neighbourVel;
-                amountNeighboursAlignment++;
-            }
+        if(distanceToNeighbour < alignmentRadius)
+        {
+            alignmentForce += neighbourVel;
+            amountNeighboursAlignment++;
+        }
             
-            
-            if(distanceToNeighbour < cohesionRadius)
-            {
-                cohesionForce += neighbourPos;
-                amountNeighboursCohesion++;
-            }
+        if(distanceToNeighbour < cohesionRadius)
+        {
+            cohesionForce += neighbourPos;
+            amountNeighboursCohesion++;
         }
     }
 
+    boid.smth += amountNeighboursSeperation;
     float3 newVel = float3(0, 0, 0);
-    if(amountNeighboursSeperation > 0)
-    {
-        seperationForce /= amountNeighboursSeperation;
-        newVel += seperationForce * seperationStrength;
-    }
+    // if(amountNeighboursSeperation > 0)
+    // {
+    //     seperationForce /= amountNeighboursSeperation;
+    // }
     if(amountNeighboursAlignment > 0)
     {
         alignmentForce /= amountNeighboursAlignment;
-        alignmentForce -= vel;
-        newVel += alignmentForce * alignmentStrength;
+        
     }
     if(amountNeighboursCohesion > 0)
     {
         cohesionForce /= amountNeighboursCohesion;
-        cohesionForce -= pos;
-        newVel += cohesionForce * cohesionStrength;
     }
 
-    newVel += (moveMePos - pos) * moveMeStrength;
+    Forces forces;
+    forces.seperation = seperationForce;
+    forces.alignment = alignmentForce;
+    forces.cohesion = cohesionForce;
+    cachedForces[localId.x][localId.y] = forces;
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if(id >= amountBoids)
+    {
+        return;
+    }
+
+    if(localId.y > 0)
+    {
+        return;
+    }
+    
+    for (int i = 0; i < 27; ++i)
+    {
+        Forces tempForces = cachedForces[localId.x][i];
+        seperationForce += tempForces.seperation;
+        alignmentForce += tempForces.alignment;
+        cohesionForce += tempForces.cohesion;
+    }
+
+    newVel += seperationForce * seperationStrength * 0.001;
+
+    alignmentForce -= vel;
+    newVel += alignmentForce * alignmentStrength * 0.001;
+    
+    cohesionForce -= pos;
+    newVel += cohesionForce * cohesionStrength * 0.001;
+    
+    //newVel += (moveMePos - pos) * moveMeStrength * 0.001;
+
 
     vel += newVel;
+    
+    if (pos.x < 0) vel.x += 0.2;
+    if (pos.x > boxArea) vel.x -= 0.2;
+    if (pos.y < 0) vel.y += 0.2;
+    if (pos.y > boxArea) vel.y -= 0.2;
+    if (pos.z < 0) vel.z += 0.2;
+    if (pos.z > boxArea) vel.z -= 0.2;
+    
     float speed = length(vel);
     if(speed > maxSpeed)
     {
-        vel.x = vel.x / speed * maxSpeed;
-        vel.y = vel.y / speed * maxSpeed;
+        vel = vel / speed * maxSpeed;
     }
     if(speed < minSpeed)
     {
-        vel.x = vel.x / speed * minSpeed;
-        vel.y = vel.y / speed * minSpeed;
+        vel = vel / speed * minSpeed;
     }
-
-    //float ip = exp(-rotationSpeed * deltaTime);
-    //boid.velocity = normalize(vel + newVel);
+    
     boid.velocity = vel;
     boid.position += boid.velocity * (boidSpeed * deltaTime);
-    boid.smth = (float)amountNeighboursSeperation;
+    
 
     Boids[id] = boid;
 }

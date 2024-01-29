@@ -85,34 +85,12 @@ public class BoidsManager : MonoBehaviour
     private Vector3 GetBoidSpawnPos()
     {
         Vector3 respawnPos;
-        float respawnWidth = 10;
-        float randX = Random.Range(0f, 1f);
-        float randY = Random.Range(0f, 1f);
-        float randZ = Random.Range(0f, 1f);
-        
-        respawnPos.y = randY * (spawnAreaWidth * 2 - respawnWidth * 2) + respawnWidth;
-
-        if(Random.Range(0f, 1f) < 0.5)
-        {
-            respawnPos.x = randX * spawnAreaWidth * 3;
-            if(respawnPos.x > respawnWidth && respawnPos.x < spawnAreaWidth * 3 - respawnWidth)
-            {
-                float extraZPos = (int)(randZ * 2) * (spawnAreaWidth * 3 - respawnWidth);
-                respawnPos.z = randZ * respawnWidth + extraZPos;
-                return respawnPos;
-            }
-            respawnPos.z = randZ * spawnAreaWidth * 3;
-            return respawnPos;
-        }
-	
-        respawnPos.z = randZ * spawnAreaWidth * 3;
-        if(respawnPos.z > respawnWidth && respawnPos.z < spawnAreaWidth * 3 - respawnWidth)
-        {
-            float extraZPos = (int)(randX * 2) * (spawnAreaWidth * 3 - respawnWidth);
-            respawnPos.x = randX * respawnWidth + extraZPos;
-            return respawnPos;
-        }
-        respawnPos.x = randX * spawnAreaWidth * 3;
+        float randX = Random.Range(0f, spawnAreaWidth);
+        float randY = Random.Range(0f, spawnAreaWidth);
+        float randZ = Random.Range(0f, spawnAreaWidth);
+        respawnPos.x = randX;
+        respawnPos.y = randY;
+        respawnPos.z = randZ;
         return respawnPos;
     }
 
@@ -156,6 +134,7 @@ public class BoidsManager : MonoBehaviour
         boidsShader.SetFloat("deltaTime", Time.deltaTime);
         boidsShader.SetFloat("maxSpeed", maxSpeed);
         boidsShader.SetFloat("minSpeed", minSpeed);
+        boidsShader.SetFloat("boxArea", spawnAreaWidth);
         boidsShader.SetVector("moveMePos", moveMe.position);
         
         boidsShader.SetFloat("seperationRadius", seperationRadius);
@@ -179,7 +158,7 @@ public class BoidsManager : MonoBehaviour
         ComputeSorter.Sort(boidsIndicesBuffer);
         boidsShader.Dispatch(boidStartIndexKernel, threadX, 1, 1);
 
-        boidsShader.Dispatch(updateBoidsKernel, threadX, 1, 1);
+        boidsShader.Dispatch(updateBoidsKernel, Mathf.CeilToInt(numOfBoids / 32.0f), 1, 1);
         
         Graphics.DrawMeshInstancedIndirect(boidMesh, 0, boidMaterial, bounds, argsBuffer);
     }

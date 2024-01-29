@@ -596,18 +596,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cac91c996a5611242a3576b4d70f6c34, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  seperationRadius: 3
-  seperationStrength: 0.1
+  seperationRadius: 2
+  seperationStrength: 0.05
   alignmentRadius: 3
   alignmentStrength: 0.05
   cohesionRadius: 3
   cohesionStrength: 0.0005
-  moveMeStrength: 0.001
+  moveMeStrength: 0.1
   boidMaterial: {fileID: 2100000, guid: 171fdb8c902aab9479429aece8a73597, type: 2}
   boidMesh: {fileID: -5495902117074765545, guid: c122184fe3c66a54997df5148abd76bc,
     type: 3}
   numOfBoids: 100000
-  spawnAreaWidth: 20
+  spawnAreaWidth: 200
   moveMe: {fileID: 1751283209}
   maxSpeed: 6
   minSpeed: 3
