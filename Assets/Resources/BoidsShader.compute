@@ -51,6 +51,9 @@ RWStructuredBuffer<uint> StartIndices;
 float deltaTime;
 float boidSpeed;
 float rotationSpeed;
+float3 moveMePos;
+float maxSpeed;
+float minSpeed;
 
 float cellSize;
 
@@ -62,6 +65,7 @@ float neighbourRadius;
 float seperationStrength;
 float alignmentStrength;
 float cohesionStrength;
+float moveMeStrength;
 
 uint amountBoids;
 
@@ -100,9 +104,9 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
     uint hash = CellToHash(cell);
     uint key = HashToKey(hash);
 
-    uint amountNeighboursSeperation = 0;
-    uint amountNeighboursAlignment = 0;
-    uint amountNeighboursCohesion = 0;
+    float amountNeighboursSeperation = 0;
+    float amountNeighboursAlignment = 0;
+    float amountNeighboursCohesion = 0;
     float3 seperationForce = float3(0, 0, 0);
     float3 alignmentForce = float3(0, 0, 0);
     float3 cohesionForce = float3(0, 0, 0);
@@ -132,7 +136,7 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
             
             if(distanceToNeighbour < seperationRadius)
             {
-                seperationForce += (pos - neighbourPos);
+                seperationForce -= neighbourPos - pos;
                 amountNeighboursSeperation++;
             }
             
@@ -142,13 +146,12 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
                 amountNeighboursAlignment++;
             }
             
-            // if(distanceToNeighbour < cohesionRadius)
-            // {
-            //     cohesionForce += neighbourPos;
-            //     amountNeighboursCohesion++;
-            // }
-            cohesionForce += neighbourPos;
-            amountNeighboursCohesion++;
+            
+            if(distanceToNeighbour < cohesionRadius)
+            {
+                cohesionForce += neighbourPos;
+                amountNeighboursCohesion++;
+            }
         }
     }
 
@@ -161,22 +164,36 @@ void UpdateBoids (uint id : SV_DispatchThreadID)
     if(amountNeighboursAlignment > 0)
     {
         alignmentForce /= amountNeighboursAlignment;
+        alignmentForce -= vel;
         newVel += alignmentForce * alignmentStrength;
     }
     if(amountNeighboursCohesion > 0)
     {
         cohesionForce /= amountNeighboursCohesion;
-        cohesionForce = cohesionForce - pos;
+        cohesionForce -= pos;
         newVel += cohesionForce * cohesionStrength;
     }
 
-    newVel = normalize(newVel);
+    newVel += (moveMePos - pos) * moveMeStrength;
+
+    vel += newVel;
+    float speed = length(vel);
+    if(speed > maxSpeed)
+    {
+        vel.x = vel.x / speed * maxSpeed;
+        vel.y = vel.y / speed * maxSpeed;
+    }
+    if(speed < minSpeed)
+    {
+        vel.x = vel.x / speed * minSpeed;
+        vel.y = vel.y / speed * minSpeed;
+    }
 
     //float ip = exp(-rotationSpeed * deltaTime);
     //boid.velocity = normalize(vel + newVel);
-    boid.velocity = lerp(vel, newVel, rotationSpeed);
+    boid.velocity = vel;
     boid.position += boid.velocity * (boidSpeed * deltaTime);
-    boid.smth = amountNeighboursSeperation / (amountBoids / 2);
+    boid.smth = (float)amountNeighboursSeperation;
 
     Boids[id] = boid;
 }

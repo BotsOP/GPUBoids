@@ -11,19 +11,22 @@ public class BoidsManager : MonoBehaviour
 {
     [Header("Boid Forces")]
     [SerializeField, Range(0, 10)] private float seperationRadius = 1;
-    [SerializeField, Range(0, 1)] private float seperationStrength = 1;
+    [SerializeField, Range(0, 0.1f)] private float seperationStrength = 0.05f;
     [SerializeField, Range(0, 10)] private float alignmentRadius = 1;
-    [SerializeField, Range(0, 1)] private float alignmentStrength = 1;
+    [SerializeField, Range(0, 0.1f)] private float alignmentStrength = 0.05f;
     [SerializeField, Range(0, 10)] private float cohesionRadius = 1;
-    [SerializeField, Range(0, 10)] private float cohesionStrength = 1;
+    [SerializeField, Range(0, 0.1f)] private float cohesionStrength = 0.0005f;
+    [SerializeField, Range(0, 0.1f)] private float moveMeStrength = 0.0005f;
     
     [Header("Boid Settings")]
     [SerializeField] private Material boidMaterial;
     [SerializeField] private Mesh boidMesh;
-    [SerializeField] private int numOfBoids;
+    [SerializeField] private int numOfBoids = 100000;
     [SerializeField] private float  spawnAreaWidth;
+    [SerializeField] private Transform moveMe;
+    [SerializeField, Range(0, 10)] private float  maxSpeed = 6;
+    [SerializeField, Range(0, 10)] private float  minSpeed = 3;
     [SerializeField, Range(0, 5)] private float boidSpeed = 1;
-    [SerializeField, Range(0, 1)] private float rotationSpeed = 1;
     [SerializeField, Range(0, 10)] private float cellSize = 1;
     
     private ComputeShader boidsShader;
@@ -148,10 +151,12 @@ public class BoidsManager : MonoBehaviour
 
     private void Update()
     {
-        boidsShader.SetFloat("rotationSpeed", rotationSpeed);
         boidsShader.SetFloat("boidSpeed", boidSpeed);
         boidsShader.SetFloat("cellSize", cellSize);
         boidsShader.SetFloat("deltaTime", Time.deltaTime);
+        boidsShader.SetFloat("maxSpeed", maxSpeed);
+        boidsShader.SetFloat("minSpeed", minSpeed);
+        boidsShader.SetVector("moveMePos", moveMe.position);
         
         boidsShader.SetFloat("seperationRadius", seperationRadius);
         boidsShader.SetFloat("alignmentRadius", alignmentRadius);
@@ -161,6 +166,7 @@ public class BoidsManager : MonoBehaviour
         boidsShader.SetFloat("seperationStrength", seperationStrength);
         boidsShader.SetFloat("alignmentStrength", alignmentStrength);
         boidsShader.SetFloat("cohesionStrength", cohesionStrength);
+        boidsShader.SetFloat("moveMeStrength", moveMeStrength);
         
         
         // Uint3[] indices = new Uint3[numOfBoids];
